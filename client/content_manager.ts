@@ -71,8 +71,6 @@ function selectionHunk(state: {
   );
 }
 
-const autoSaveInterval = 1000;
-
 /**
  * Manages content lifecycle: loading, saving, reloading, and editor mode switching
  * for both markdown pages and non-markdown documents.
@@ -106,6 +104,10 @@ export class ContentManager {
       .dispatchEvent("editor:updated")
       .catch((e) => console.error("Error dispatching editor:updated event", e));
   }, 1000);
+
+  private get autoSaveInterval(): number {
+    return this.client.config?.get?.("sync.autoSaveInterval", 1000) ?? 1000;
+  }
 
   constructor(
     private client: Client,
@@ -218,7 +220,7 @@ export class ContentManager {
             if (this.client.editorView.composing) {
               this.saveTimeout = setTimeout(
                 this.save.bind(this),
-                autoSaveInterval,
+                this.autoSaveInterval,
               );
               return resolve();
             }
@@ -311,7 +313,7 @@ export class ContentManager {
               });
           }
         },
-        immediate ? 0 : autoSaveInterval,
+        immediate ? 0 : this.autoSaveInterval,
       );
     });
   }

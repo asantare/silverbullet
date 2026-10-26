@@ -28,8 +28,6 @@ export type AnchorResolver = (
   page?: string,
 ) => Promise<ResolveAnchorResult>;
 
-const pageWatchInterval = 3000; // + jitter
-
 /**
  * Wrapper around space primitives (see spaces/) for Client use
  * Adds:
@@ -48,6 +46,7 @@ export class Space {
     readonly spacePrimitives: SpacePrimitives,
     eventHook: EventHook,
     private anchorResolver?: AnchorResolver,
+    private getPageWatchInterval: () => number = () => 3000,
   ) {
     eventHook.addLocalListener("file:deleted", (fileName: string) => {
       if (this.watchedFiles.has(fileName)) {
@@ -284,7 +283,7 @@ export class Space {
           await this.spacePrimitives.getFileMeta(fileName, true, "cheap");
         }
       });
-    }, pageWatchInterval + jitter());
+    }, this.getPageWatchInterval() + jitter());
   }
 
   unwatch() {

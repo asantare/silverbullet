@@ -55,6 +55,20 @@ config.define("sync", {
       description = "Sync document files (non-markdown) locally from the server. Allows access to document files while offline.",
       ui = { category = "Sync", label = "Sync documents", priority = 1 },
     },
+    autoSaveInterval = {
+      type = "number",
+      default = 1000,
+      minimum = 100,
+      description = "Interval in milliseconds between local edits and auto-saving to the server.",
+      ui = { category = "Sync", label = "Auto-save interval (ms)", priority = 2 },
+    },
+    pageWatchInterval = {
+      type = "number",
+      default = 3000,
+      minimum = 500,
+      description = "Interval in milliseconds between polling checks for external page changes.",
+      ui = { category = "Sync", label = "Page watch interval (ms)", priority = 3 },
+    },
     -- In .gitignore format, either in a single string, or as a list of strings
     ignore = {
       oneOf = {

@@ -539,6 +539,7 @@ export class Client {
       this.eventHook,
       (name, page) =>
         this.clientSystem.localSyscall("index.resolveAnchor", [name, page]),
+      () => this.config?.get?.("sync.pageWatchInterval", 3000) ?? 3000,
     );
 
     this.space = space;
