@@ -69,6 +69,13 @@ config.define("sync", {
       description = "Interval in milliseconds between polling checks for external page changes.",
       ui = { category = "Sync", label = "Page watch interval (ms)", priority = 3 },
     },
+    fileListPollInterval = {
+      type = "number",
+      default = 10000,
+      minimum = 1000,
+      description = "Interval in milliseconds between periodic file list polls.",
+      ui = { category = "Sync", label = "File list poll interval (ms)", priority = 4 },
+    },
     -- In .gitignore format, either in a single string, or as a list of strings
     ignore = {
       oneOf = {

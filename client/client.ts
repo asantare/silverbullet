@@ -502,21 +502,26 @@ export class Client {
       this.ds,
     );
 
-    setInterval(() => {
-      const now = Date.now();
-      if (
-        !fileListPollDue(
-          now,
-          this.lastFileListPoll,
-          this.realtimeHealthyUntil,
-          !!globalThis.navigator?.serviceWorker?.controller,
-        )
-      ) {
-        return;
-      }
-      this.lastFileListPoll = now;
-      void this.eventedSpacePrimitives.fetchFileList();
-    }, fetchFileListInterval + jitter());
+    const scheduleFileListPoll = () => {
+      const pollInterval =
+        this.config?.get?.("sync.fileListPollInterval", 10000) ?? 10000;
+      setTimeout(() => {
+        const now = Date.now();
+        if (
+          fileListPollDue(
+            now,
+            this.lastFileListPoll,
+            this.realtimeHealthyUntil,
+            !!globalThis.navigator?.serviceWorker?.controller,
+          )
+        ) {
+          this.lastFileListPoll = now;
+          void this.eventedSpacePrimitives.fetchFileList();
+        }
+        scheduleFileListPoll();
+      }, pollInterval + jitter());
+    };
+    scheduleFileListPoll();
 
     this.eventHook.addLocalListener(
       "file:changedBatch",
