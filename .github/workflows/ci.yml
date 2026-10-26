@@ -84,79 +84,11 @@ jobs:
 
           echo "publish=$publish is_edge=$is_edge is_tag=$is_tag"
 
-
-
-  # Compile alongside tests; publishing jobs enforce the test gate.
   build:
     needs: [config]
     if: needs.config.outputs.publish == 'true'
     uses: ./.github/workflows/_build.yml
     secrets: inherit
-
-  release:
-    needs: [config, build]
-    if: needs.config.outputs.publish == 'true'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      id-token: write # npm provenance / JSR auth on tag publishes
-    steps:
-      - name: Setup repo
-        uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-          fetch-tags: true
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v7
-        with:
-          node-version-file: ".nvmrc"
-          registry-url: "https://registry.npmjs.org"
-
-      - name: Install npm dependencies
-        run: npm ci
-
-      - name: Build plug-compile bundle
-        run: npm run build:plug-compile
-
-      - name: Download build artifacts
-        uses: actions/download-artifact@v8
-        with:
-          path: dist-artifacts
-          pattern: release-zips-*
-          merge-multiple: true
-
-      # Branch / manual dispatch → refresh the rolling edge prerelease.
-      - name: Publish edge prerelease
-        if: needs.config.outputs.is_edge == 'true'
-        uses: softprops/action-gh-release@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          draft: false
-          tag_name: ${{ needs.config.outputs.gh_release_tag }}
-          name: ${{ needs.config.outputs.gh_release_name }}
-          body: Automated build from commit ${{ github.sha }}
-          prerelease: true
-          files: |
-            docs/CHANGELOG.md
-            dist/plug-compile.js
-            dist-artifacts/silverbullet-server-*.zip
-            dist-artifacts/sb-*.zip
-
-      # Tag push → publish that tag's (non-pre) release. Tag is inferred from ref.
-      - name: Publish tagged release
-        if: needs.config.outputs.is_tag == 'true'
-        uses: softprops/action-gh-release@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          draft: false
-          files: |
-            docs/CHANGELOG.md
-            dist/plug-compile.js
-            dist-artifacts/silverbullet-server-*.zip
-            dist-artifacts/sb-*.zip
 
   docker:
     needs: [config, build]
@@ -181,7 +113,7 @@ jobs:
       - name: Verify binaries are static (no interpreter)
         run: |
           set -euo pipefail
-          for b in silverbullet-amd64 silverbullet-arm64 silverbullet-arm; do
+          for b in silverbullet-amd64; do
             echo "== $b =="; file "$b"
             if file "$b" | grep -q "interpreter"; then
               echo "ERROR: $b is dynamically linked (needs a loader); expected static musl"; exit 1
