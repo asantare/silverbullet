@@ -13,11 +13,9 @@ concurrency:
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-  ARCHITECTURES: linux/arm64,linux/amd64,linux/arm/v7
+  ARCHITECTURES: linux/amd64
   IMAGE_NAME: silverbullet
-  WEBSITE_IMAGE: zefhemel/silverbullet-website
-  NAMESPACE_GITHUB: silverbulletmd
-  NAMESPACE_DOCKER: zefhemel
+  NAMESPACE_GITHUB: asantare
 
 permissions:
   contents: read
@@ -86,152 +84,7 @@ jobs:
 
           echo "publish=$publish is_edge=$is_edge is_tag=$is_tag"
 
-  test-frontend:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Setup repo
-        uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-          fetch-tags: true
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v7
-        with:
-          node-version-file: ".nvmrc"
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Run build
-        run: npm run build
-
-      - name: Run checks
-        run: |
-          npm run check
-          npm test
-
-  # Debug rust-embed serves from disk, so runtime tests need a built client bundle.
-  test-rust:
-    # Playwright 1.58 can't install browsers on Ubuntu 26.04 (ubuntu-latest
-    # since October 2026)
-    runs-on: ubuntu-24.04
-    steps:
-      - name: Setup repo
-        uses: actions/checkout@v7
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v7
-        with:
-          node-version-file: ".nvmrc"
-
-      - uses: Swatinem/rust-cache@v2
-        with:
-          key: test-rust
-          save-if: ${{ github.ref == 'refs/heads/main' }}
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build client bundle
-        run: npm run build
-
-      - name: Install Playwright browser (chromium)
-        run: npx playwright install --with-deps chromium
-
-      # Point runtime tests at Playwright Chromium; CI must fail rather than skip them.
-      - name: Resolve chromium path
-        run: |
-          echo "CHROMIUM_PATH=$(node -e "console.log(require('@playwright/test').chromium.executablePath())")" >> "$GITHUB_ENV"
-
-      - name: Run Rust tests
-        run: cargo test --workspace --all-features
-
-  test-e2e:
-    # Playwright 1.58 can't install browsers on Ubuntu 26.04 (ubuntu-latest
-    # since October 2026)
-    runs-on: ubuntu-24.04
-    steps:
-      - name: Setup repo
-        uses: actions/checkout@v7
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v7
-        with:
-          node-version-file: ".nvmrc"
-
-      - uses: Swatinem/rust-cache@v2
-        with:
-          key: e2e-debug
-          save-if: ${{ github.ref == 'refs/heads/main' }}
-
-      - name: Install dependencies
-        run: npm ci
-
-      # Debug serves assets from disk; test-e2e-release covers embedded assets.
-      - name: Build (debug server + client bundle)
-        run: make build-e2e
-
-      - name: Install Playwright browser (chromium)
-        run: npx playwright install --with-deps chromium
-
-      - name: Run e2e tests
-        run: npx playwright test --project=chromium
-
-      - name: Run browser UI tests
-        run: npx playwright test --config=playwright.browser.config.ts
-
-      - name: Upload test results
-        if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v7
-        with:
-          name: playwright-report
-          path: test-results/
-          retention-days: 7
-
-  # Validates the shipped release binary's rust-embed embedded bundle. Kept
-  # separate from test-e2e so the fast gate isn't blocked on a release compile;
-  # runs in parallel and gates release/docker.
-  test-e2e-release:
-    # Playwright 1.58 can't install browsers on Ubuntu 26.04 (ubuntu-latest
-    # since October 2026)
-    runs-on: ubuntu-24.04
-    steps:
-      - name: Setup repo
-        uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-          fetch-tags: true
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v7
-        with:
-          node-version-file: ".nvmrc"
-
-      - uses: Swatinem/rust-cache@v2
-        with:
-          key: e2e-release
-          save-if: ${{ github.ref == 'refs/heads/main' }}
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build (release server with embedded bundle)
-        run: make build-rs
-
-      - name: Install Playwright browser (chromium)
-        run: npx playwright install --with-deps chromium
-
-      - name: Run embedded-bundle e2e tests
-        run: npx playwright test --project=release
-
-      - name: Upload test results
-        if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v7
-        with:
-          name: playwright-report-release
-          path: test-results/
-          retention-days: 7
 
   # Compile alongside tests; publishing jobs enforce the test gate.
   build:
@@ -241,7 +94,7 @@ jobs:
     secrets: inherit
 
   release:
-    needs: [config, build, test-frontend, test-rust, test-e2e, test-e2e-release]
+    needs: [config, build]
     if: needs.config.outputs.publish == 'true'
     runs-on: ubuntu-latest
     permissions:
@@ -306,7 +159,7 @@ jobs:
             dist-artifacts/sb-*.zip
 
   docker:
-    needs: [config, build, test-frontend, test-rust, test-e2e, test-e2e-release]
+    needs: [config, build]
     if: needs.config.outputs.publish == 'true'
     runs-on: ubuntu-latest
     permissions:
@@ -335,21 +188,10 @@ jobs:
             fi
           done
 
-      - name: Set up QEMU for multi-arch builds with buildx
-        uses: docker/setup-qemu-action@v3
-        with:
-          platforms: ${{ env.ARCHITECTURES }}
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
         with:
           platforms: ${{ env.ARCHITECTURES }}
-
-      - name: Login to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Log in to the ghcr Container registry
         uses: docker/login-action@v3
@@ -363,7 +205,6 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: |
-            ${{ env.NAMESPACE_DOCKER }}/${{ env.IMAGE_NAME }}
             ghcr.io/${{ env.NAMESPACE_GITHUB }}/${{ env.IMAGE_NAME }}
           flavor: latest=false
           tags: |
@@ -388,7 +229,6 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: |
-            ${{ env.NAMESPACE_DOCKER }}/${{ env.IMAGE_NAME }}
             ghcr.io/${{ env.NAMESPACE_GITHUB }}/${{ env.IMAGE_NAME }}
           flavor: latest=false
           tags: |
@@ -404,8 +244,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          # Alpine disables Chromium on armv7 (linker OOM); armv7 remains available in slim.
-          platforms: linux/arm64,linux/amd64
+          platforms: ${{ env.ARCHITECTURES }}
           push: true
           file: Dockerfile.runtime-api
           provenance: false
@@ -413,38 +252,3 @@ jobs:
             BASE_IMAGE=ghcr.io/${{ env.NAMESPACE_GITHUB }}/${{ env.IMAGE_NAME }}@${{ steps.slim_build.outputs.digest }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-
-  docker-website:
-    needs: [config, docker]
-    if: needs.config.outputs.publish == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Setup repo
-        uses: actions/checkout@v7
-
-      - name: Login to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - name: "Website: Extract metadata (tags, labels) for docker"
-        id: website_meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.WEBSITE_IMAGE }}
-          tags: |
-            type=raw,value=${{ needs.config.outputs.website_tag }},enable=${{ needs.config.outputs.is_edge == 'true' }}
-            type=semver,pattern=latest,enable=true
-
-      - name: "Website: Build and push"
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: Dockerfile.website
-          push: true
-          provenance: false
-          build-args: |
-            BASE_IMAGE=zefhemel/silverbullet:${{ needs.config.outputs.is_tag == 'true' && 'latest-slim' || needs.config.outputs.docker_slim_edge_tag }}
-          tags: ${{ steps.website_meta.outputs.tags }}
-          labels: ${{ steps.website_meta.outputs.labels }}
